@@ -1,0 +1,182 @@
+---
+title: "Cervical Cancer Classification and Handling Class Imbalance"
+author: "Yupeng He & Martin Li"
+date: "2024-09-26"
+output:
+  pdf_document:
+    toc: true
+    toc_depth: 2
+  html_document:
+    toc: true
+    toc_depth: 2
+    highlight: "zenburn"
+---
+
+# Introduction
+
+This project focuses on classifying cervical cancer using a dataset of risk factors and applying various machine learning techniques to handle class imbalance.
+
+## Dataset Overview
+
+The dataset includes risk factors for cervical cancer, and the goal is to classify the presence or absence of cancer (Dx) using features like age, STDs, and biopsy results.
+
+```{r setup, include=FALSE}
+# Load necessary libraries
+library(tidyverse)
+library(caret)
+library(randomForest)
+library(gbm)
+library(UBL)
+library(pROC)
+```
+
+### Load Data
+
+We start by loading the dataset and replacing missing values with the median for numerical features.
+
+```{r}
+# Load the dataset
+data <- read.csv('data/risk_factors_cervical_cancer.csv')
+
+# Replace '?' with NA and handle missing values
+data[data == "?"] <- NA
+data <- as.data.frame(sapply(data, as.numeric))
+data$Dx <- as.factor(data$Dx)
+
+# Replace NAs with median values for numeric columns
+data <- data %>%
+  mutate(across(where(is.numeric), ~ coalesce(., median(., na.rm = TRUE))))
+
+# Remove columns that are not relevant
+data <- data %>% select(-Dx.Cancer)
+data$Dx <- as.factor(data$Dx)
+levels(data$Dx) <- c("No Cancer", "Cancer")
+```
+
+### Exploratory Data Analysis
+
+We visualize the distribution of cancer diagnoses in the dataset and check the top 8 correlations with the target variable.
+
+```{r}
+# Plot the distribution of cancer diagnosis
+ggplot(data, aes(x = Dx)) +
+  geom_bar(fill = "steelblue") +
+  theme_minimal() +
+  ggtitle("Distribution of Cancer Diagnosis")
+
+# Correlation plot for top correlated variables
+cor_matrix <- cor(data %>% select(-Dx))
+top_cor <- names(sort(abs(cor_matrix["Dx",]), decreasing = TRUE)[1:9])
+ggplot(melt(cor_matrix[top_cor, top_cor]), aes(X1, X2, fill = value)) +
+  geom_tile() +
+  geom_text(aes(label = round(value, 2)), color = "white", size = 3) +
+  scale_fill_gradient2(low = "blue", high = "red") +
+  ggtitle("Top Correlated Features with Dx")
+```
+
+## Data Preprocessing
+
+We split the data into training and testing sets and scale numeric features.
+
+```{r}
+# Stratify sampling to handle class imbalance
+set.seed(1)
+train_index <- createDataPartition(data$Dx, p = 0.7, list = FALSE)
+train <- data[train_index, ]
+test <- data[-train_index, ]
+
+# Scale numeric columns
+train <- train %>% mutate(across(where(is.numeric), scale))
+test <- test %>% mutate(across(where(is.numeric), scale))
+```
+
+## Model Training
+
+We train multiple machine learning models to classify cervical cancer, including logistic regression, k-NN, bagging, random forest, and boosting. We evaluate model performance using cross-validation.
+
+```{r}
+# Define a function to perform 5x5 cross-validation
+cv_accuracy <- function(model, train, k = 5) {
+  set.seed(1)
+  cv_index <- createMultiFolds(train$Dx, k = k, times = k)
+  results <- sapply(names(cv_index), function(fold) {
+    fold_train <- train[cv_index[[fold]], ]
+    fold_test <- train[-cv_index[[fold]], ]
+    pred <- model(fold_train, fold_test)
+    confusionMatrix(as.factor(pred), fold_test$Dx)$overall['Accuracy']
+  })
+  mean(results)
+}
+
+# Logistic regression model
+logistic <- function(train, test) {
+  model <- glm(Dx ~ ., data = train, family = "binomial")
+  pred <- predict(model, newdata = test, type = "response")
+  ifelse(pred > 0.5, "Cancer", "No Cancer")
+}
+
+# Random forest model
+random_forest <- function(train, test) {
+  model <- randomForest(Dx ~ ., data = train)
+  predict(model, newdata = test)
+}
+
+# Boosting model
+boosting <- function(train, test) {
+  model <- gbm(Dx ~ ., data = train, distribution = "multinomial", n.trees = 5000)
+  pred <- predict(model, newdata = test, n.trees = which.min(model$cv.error), type = "response")
+  ifelse(pred > 0.5, "Cancer", "No Cancer")
+}
+
+# Cross-validation results
+results <- data.frame(
+  Model = c("Logistic", "Random Forest", "Boosting"),
+  Accuracy = c(cv_accuracy(logistic, train), cv_accuracy(random_forest, train), cv_accuracy(boosting, train))
+)
+results
+```
+## Addressing Class Imbalance with ADASYN
+
+We handle the class imbalance by applying the ADASYN algorithm for synthetic sampling.
+
+```{r}
+# Apply ADASYN for oversampling
+train_balanced <- AdasynClassif(Dx ~ ., train, beta = 1, k = 5)
+
+# Check the distribution after oversampling
+ggplot(train_balanced, aes(x = Dx)) +
+  geom_bar(fill = "steelblue") +
+  theme_minimal() +
+  ggtitle("Distribution After ADASYN Oversampling")
+```
+
+## Model Evaluation
+
+We evaluate model performance using accuracy, precision, recall, and F1-score. ROC curves are plotted for a final comparison of the models.
+
+```{r}
+# Evaluate the models on the test set
+predictions <- list(
+  Logistic = logistic(train, test),
+  RandomForest = random_forest(train, test),
+  Boosting = boosting(train, test)
+)
+
+# Calculate confusion matrices
+conf_matrices <- lapply(predictions, function(pred) {
+  confusionMatrix(as.factor(pred), test$Dx)
+})
+
+# ROC curves
+roc_curves <- lapply(predictions, function(pred) {
+  roc(test$Dx, as.numeric(pred == "Cancer"))
+})
+
+# Plot ROC curves
+ggroc(roc_curves, aes(color = names(predictions))) +
+  ggtitle("ROC Curves for Different Models")
+```
+
+# Conclusion
+
+The application of various machine learning models to the cervical cancer dataset shows that random forest and boosting models perform the best. ADASYN helped in mitigating the class imbalance issue, improving the models’ ability to predict cervical cancer cases.

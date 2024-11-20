@@ -3,7 +3,7 @@ Cervical Cancer Classification with Machine Learning
 
 # Cervical Cancer Classification with Machine Learning
 
-This repository contains the code and analysis for the final project by **Yupeng He** and **Martin Li**. The project focuses on the classification of cervical cancer using various machine learning models and techniques to handle class imbalance in the dataset.
+This repository contains the code and analysis for the final project by **Yupeng He** and **Martin Li**. The project focuses on the binary classification of cervical cancer using various machine learning models and techniques to handle class imbalanced outcome in the dataset.
 
 ## Project Overview
 
@@ -14,12 +14,11 @@ The dataset used in this project contains risk factors related to cervical cance
 - Random Forest (Bagging)
 - Boosting (GBM)
 
-We employ cross-validation and adaptive synthetic sampling (ADASYN) to improve model performance and handle the imbalance in the dataset.
+We employed a 5*5 folds cross-validation and adaptive synthetic sampling (ADASYN) to improve model performance and handle the imbalance in the dataset.
 
 ## Key Features:
-- **Class Imbalance Handling**: Techniques like ADASYN and threshold moving were implemented to balance the dataset.
+- **Class Imbalance Handling**: Techniques like ADASYN and Cost-Sensitive Learning (Threshold Moving) were implemented to balance the dataset.
 - **Model Evaluation**: Models were evaluated using accuracy, recall, precision, and F1-score, with ROC curves and AUC metrics used to measure performance.
-- **Cost-Sensitive Learning**: Explored cost-sensitive learning techniques to optimize classification for imbalanced data.
 
 ## Requirements
 
